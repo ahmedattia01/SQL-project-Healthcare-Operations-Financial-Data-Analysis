@@ -1,0 +1,359 @@
+-- data exploration 
+SELECT 
+    *
+FROM
+    billing; 
+
+SELECT 
+    *
+FROM
+    diagnoses; 
+
+SELECT 
+    *
+FROM
+    encounters; 
+    
+    SELECT 
+    *
+FROM
+    patients; 
+    
+    SELECT 
+    *
+FROM
+    physicians; 
+-- -------------------------
+-- DATA STANDRISATION
+# billing table
+SELECT 
+    distinct length(bill_id)
+FROM
+    billing; ;
+    SELECT 
+    distinct length(encounter_id)
+FROM
+    billing; 
+   SELECT 
+    distinct status
+FROM
+    billing;  ;
+# diagnoses table 
+   SELECT 
+		distinct description , icd_10_code 
+FROM
+	diagnoses
+    
+    ;
+    SELECT d1.icd_10_code , d2.icd_10_code
+    FROM DIAGNOSES AS D1 
+    JOIN diagnoses AS D2 
+    ON D1.description = d2.description
+    where d1.icd_10_code is null or ""
+    and d2.icd_10_code is not null
+    ;
+    update DIAGNOSES AS D1
+     JOIN diagnoses AS D2 
+    ON D1.description = d2.description
+    set d1.icd_10_code = d2.icd_10_code
+    where d1.icd_10_code is null or ""
+    and d2.icd_10_code is not null ;
+    
+    
+    
+# encounters table 
+   SELECT 
+		*
+FROM
+	encounters
+    ;
+# patients table
+SELECT distinct GENDER
+FROM patients;
+
+UPDATE patients 
+set gender = "Female" where gender ="f";
+
+UPDATE patients 
+set gender = "Male" where gender ="M";
+
+select * ,
+row_number () over (partition by  patient_id, first_name, last_name, dob, gender, city, phone) as row_num1
+from patients ;
+
+CREATE TABLE `patients2` (
+  `patient_id` text,
+  `first_name` text,
+  `last_name` text,
+  `dob` text,
+  `gender` text,
+  `city` text,
+  `phone` text,
+  `row_num` int
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+select *
+from patients2 ; 
+ 
+ insert into patients2 
+ select * ,
+row_number () over (partition by  patient_id, first_name, last_name, dob, gender, city, phone) as row_num1
+from patients ;
+
+select *
+from patients2 ;
+
+
+delete 
+from patients2 
+where row_num = 2 ;
+ -- physicins 
+    SELECT 
+		*
+FROM
+	physicians
+    ;
+    -- 	Q&A------------------------------------------
+# What are the 3 most common diseases in the hospital?
+			SELECT 
+			icd_10_code,description, COUNT(icd_10_code) AS COUNT
+		FROM
+			diagnoses
+		GROUP BY icd_10_code,description
+		ORDER BY count DESC ;
+		
+		;
+		SELECT 
+			distinct icd_10_code , description
+		FROM
+			diagnoses ;
+/*
+		  TOP 3  most common diseases in the hospital IS  K35.80  Appendicitis 889 patient - R07.9 Chest pain 886 patient - S82.00 Fracture 865 patient
+        Our recommendation: Directing the administration to increase the number of surgeons and emergency physicians
+								and to equip operating rooms and plaster casts.           
+*/
+
+# Who are the 3 doctors who receive the most patients ?
+		
+        select e1.doc_id ,p1.doc_name ,p1.department ,count(*)
+        from encounters as e1
+        join physicians as p1
+        on e1.doc_id = p1.doc_id
+        group by e1.doc_id ,p1.doc_name ,p1.department
+        order by count(*) desc ;
+/*
+	top 3 doctors who receive the most patients is 
+    Dr. Harris	ER department with 147 patient ,
+    Dr. Barber	Pediatrics department with 142 patient
+    Dr. Velez	Internal Medicine department with 132 patient
+
+Having Dr. Harris (ER) at the top of the list is perfectly in line with your earlier finding that "chest pain," "fractures," 
+and "appendicitis" are the most common cases! This means our ER is under tremendous pressure,
+  I will recommend that management increase the budget for this department immediately.          
+*/
+-- ----------------------------------------------
+# What is our average revenue per visit, and which department has the highest 'average revenue' per visit?
+;
+SELECT 
+    p1.department,
+    LEFT(AVG(b1.total_amount), 7) AS 'average revenue per visit'
+FROM
+    billing AS b1
+        JOIN
+    encounters AS e1 ON b1.encounter_id = e1.encounter_id
+        JOIN
+    physicians AS p1 ON p1.doc_id = e1.doc_id
+WHERE
+    total_amount > 0 AND status != 'Error'
+GROUP BY p1.department
+ORDER BY 'average revenue per visit'
+;
+/*
+   'department','average revenue per visit'
+	Orthopedics 	7708.71
+	ER	 7698.66
+	General Surgery	 7565.55
+	Pediatdiagnosesrics	 7542.92
+	Cardiology	 7434.03
+	Internal Medicine	 7398.22
+    The orthopedics department tops the list with an average income exceeding $7,708 per visit. 
+    This is to be expected to cover the cost of surgeries, plates, and screws.
+But the real surprise is the Emergency Department (ER) in second place ($7,698). 
+If we connect this information with what you mentioned in the previous question (that the ER receives more patients)
+ it means that the ER is the hospital's "cash cow," but at the same time, its biggest bottleneck.
+	I would  ask the administration to allocate more resources and beds to the ER!
+*/
+--  ---------------------------------------------------------------------
+# Who are the top 5 patients who have visited the hospital the most ? 
+#  what cities do they come from?
+# Do we notice that they are concentrated in a particular city that may be suffering from pollution or a lack of primary care?
+-- firist populate what ever i can in cities 
+SELECT p1.first_name ,p1.last_name ,p1.city,p2.city
+ FROM patients2 as p1 
+ join patients2 as p2 
+ on (
+ p1.first_name =p2.first_name and p1.last_name = p2.last_name
+ )
+ where p1.city is null and p2.city is not null
+ ;
+ update patients2  as p1 
+ join patients2 as p2 
+ on (
+ p1.first_name =p2.first_name and p1.last_name = p2.last_name
+ )
+ set p1.city = p2.city
+ where (p1.city is null or "") and p2.city is not null ;
+ 
+select p1.patient_id,p1.first_name ,p1.last_name, p1.city ,count(*) as "count of visits" 
+from encounters as e1 
+join patients2 as p1 
+on e1.patient_id =p1.patient_id
+group by p1.patient_id,p1.first_name ,p1.last_name, p1.city 
+order by count(*) desc
+limit 20 ;
+
+;
+select  p1.city ,count(*) as "count of visits" 
+from encounters as e1 
+join patients2 as p1 
+on e1.patient_id =p1.patient_id
+group by  p1.city 
+order by count(*) desc ;
+
+select distinct city , count(*)
+from patients2
+where city is not null
+group by  city 
+order by count(*) desc
+limit 25
+;
+
+/*
+top 5 patients who have visited the hospital the most
+patient_id , first_name ,last_name , city , count of visits 
+P0473	Michelle	Johnson	Johnsonhaven	16
+P0079	John	Chapman	Harrellmouth	11
+P0105	Fernando	Donovan	Meghanview	11
+P0615	Susan	Jones	Prestonmouth	11
+P0134	John	Harris	Booneland	10
+
+top cities and count of visits 
+Johnsonhaven	16
+South Edward	13
+Harrellmouth	11
+Meghanview	11
+Prestonmouth	11
+
+top cities and count of uniqe patients 
+all of these country has 2 uniqe patients
+Elizabethstad
+Hannahberg
+Davidside
+Stevenside
+Shannonberg
+Smithside
+Michellemouth
+Melissaview
+Brucemouth
+Karenview
+Josephstad
+New Michael
+Port Amanda
+North Susan
+North Stephanie
+Foxchester
+North Joshua
+North Marieberg
+South Daniel
+Jonestown
+Joshuastad
+Christopherborough
+South Edward
+South David
+Jonesside 
+
+
+No Geographic Crisis
+BUT
+We have a Frequent Flyers 
+
+*/
+-- ------------------------------
+# What illnesses or diagnoses do these five patients present with each time? 
+# Do they complain of the same chronic illness repeatedly, or are they different illnesses at each visit?
+
+select e1.patient_id , d1.description
+from diagnoses as d1 
+join encounters as e1 
+on d1.encounter_id = e1.encounter_id
+where e1.patient_id in ("P0134","P0615","P0105","P0079","P0473")
+group by e1.patient_id , d1.description
+order by e1.patient_id , d1.description
+ ;
+ /*
+ P0079	Acute myocardial infarction
+P0079	Acute sinusitis
+P0079	Appendicitis
+P0079	Chest pain
+P0079	Fracture
+P0079	Type 2 diabetes
+P0105	Acute myocardial infarction
+P0105	Acute sinusitis
+P0105	Appendicitis
+P0105	Chest pain
+P0105	Fracture
+P0105	Type 2 diabetes
+P0105	UTI
+P0134	Acute myocardial infarction
+P0134	Acute sinusitis
+P0134	Appendicitis
+P0134	Chest pain
+P0134	Fracture
+P0134	Type 2 diabetes
+P0134	UTI
+P0473	Acute myocardial infarction
+P0473	Acute sinusitis
+P0473	Appendicitis
+P0473	Chest pain
+P0473	Fracture
+P0473	Type 2 diabetes
+P0473	UTI
+P0615	Acute myocardial infarction
+P0615	Acute sinusitis
+P0615	Appendicitis
+P0615	Chest pain
+P0615	Fracture
+P0615	Type 2 diabetes
+P0615	UTI
+
+The results are disastrous and  medically illogical 
+may be it's 
+Insurance Fraud
+System Glitch
+Dummy/Test Accounts
+we must check with IT Department
+ */
+ -- -------------------------------
+# How many visits did the patient make to the hospital within 30 days or less of the date of his previous visit?
+SELECT encounter_date , str_to_date(encounter_date,'%Y-%m-%d')
+from encounters
+;
+update encounters
+set `encounter_date` = str_to_date(encounter_date,'%Y-%m-%d')
+;
+with cte_visit as (
+select patient_id ,encounter_date as visit_1 ,LAG(encounter_date) OVER(PARTITION BY patient_id ORDER BY encounter_date) AS visit_2
+,datediff(encounter_date,LAG(encounter_date) OVER(PARTITION BY patient_id ORDER BY encounter_date)) as within_30_days
+from encounters
+where patient_id  not in ("P0134","P0615","P0105","P0079","P0473")  
+	)
+    select *
+    from cte_visit
+    where `within_30_days` = 30 or (`within_30_days` < 30)
+    
+;
+/*
+752 visits patient make to the hospital within 30 days or less of the date of his previous visit
+and after group the data we get that :
+418 uniqe patient revisted  
+*/
